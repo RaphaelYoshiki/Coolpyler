@@ -3,7 +3,7 @@ import sys
 
 #Função para checar palavra e tokenizar
 def checkword(word, isCommentBlock, isCommentLine, isString):
-  if (word == "" or word == "\t" or word == "\n" or word == " "):
+  if (word == "" or word == "\t" or word == "\n" or word == " " or word == "\r"):
     return [], isCommentBlock, isCommentLine, isString
 
   matches = []#Inicia lista de correspondências
@@ -119,7 +119,7 @@ def tokenize(source):
   for line in lines:#Para cada linha
     linecount += 1
     commentLineToggle = 0#Reiniciar bloqueador linha de comentário
-    line = re.sub(r'(\({1}\*{1}|\(|\*{1}\){1}|\)|\[|\]|\{|\}|\/|\;|\:|\.|\>|\,|\<{1}\-{1}|\<|\+|\={1}\>{1}|\=|\-{1}\-{1}|\-)', r' \1 ', str(line))#Adicionar whitespace entre símbolos
+    line = re.sub(r'(\({1}\*{1}|\(|\*{1}\){1}|\)|\[|\]|\{|\}|\/|\;|\:|\.|\>|\,|\<{1}\-{1}|\<|\+|\={1}\>{1}|\=|\-{1}\-{1}|\-|")', r' \1 ', str(line))#Adicionar whitespace entre símbolos
     words = re.split(r' ', line)#Separar linha em palavras
     for word in words:#Para cada palavra
       #Chamada checkword, retorna lista de tokens de correspondência
@@ -138,14 +138,16 @@ def tokenize(source):
 #-----------------------------------------------------------
 #Análize Sintática
 def printScope(scp):
-  if(scp == 1):
-    print("CLASS")
-  if(scp == 2):
-    print("FEATURE")
-  if(scp == 3):
-    print("FORMAL")
-  if(scp == 4):
-    print("EXPR")
+#  if(scp == 1):
+#    print("CLASS")
+#  if(scp == 2):
+#    print("FEATURE")
+#  if(scp == 3):
+#    print("FORMAL")
+#  if(scp == 4):
+#    print("EXPR")
+#  if(scp == 5):
+#    print("EXPR'")
   return
   
 def nextToken(i, tokens):
@@ -156,240 +158,211 @@ def nextToken(i, tokens):
   elif (i+1 >= len(tokens)):
     return 0
 
-def exprCase(curToken, tokens):
-  printScope(4)
-  if (curToken == 0):
-    return 0
+#EXPR'
+def exprLeft(curToken, tokens):# A’ → αA / ∈
+  printScope(5)
+  if (curToken[1][0][1] == "OP"):#expr operador expr
+    curToken = nextToken(curToken[0], tokens)
+    curToken = exprCase(curToken, tokens)
 
+  #expr[@TYPE].ID( [ expr [[, expr]]∗ ] )
   elif (curToken[1][0][1] == "at" or curToken[1][0][1] == "dot"):
     if (curToken[1][0][1] == "at"):
       curToken = nextToken(curToken[0], tokens)
       if (curToken[1][0][1] == "TYPE"):
         curToken = nextToken(curToken[0], tokens)
+      else:
+        print("Erro! Esperado -TYPE- após -@-", "\nLinha: ", curToken[1][1])
+        quit()
         
     if (curToken[1][0][1] == "dot"):
       curToken = nextToken(curToken[0], tokens)
-    if (curToken[1][0][1] == "OBJ"):
-      curToken = nextToken(curToken[0], tokens)
-    if (curToken[1][0][1] == "parenOpen"):
-      curToken = nextToken(curToken[0], tokens)
-      if (curToken[1][0][1] == "parenClose"):
+      if (curToken[1][0][1] == "OBJ"):
         curToken = nextToken(curToken[0], tokens)
       else:
+        print("Erro! Esperado -ID- após - . -", "\nLinha: ", curToken[1][1])
+        quit()
+      if (curToken[1][0][1] == "parenOpen"):
         curToken = nextToken(curToken[0], tokens)
-        curToken = exprCase(curToken, tokens)
-        if (curToken[1][0][1] == "comma"):
+        if (curToken[1][0][1] == "parenClose"):
+          curToken = nextToken(curToken[0], tokens)
+          curToken = exprLeft(curToken, tokens)
+          return curToken
+        else:
           limit = 1
           x = 0
           while x < limit:
-            curToken = nextToken(curToken[0], tokens)
+            curToken = exprLeft(curToken, tokens)
             curToken = exprCase(curToken, tokens)
             if (curToken[1][0][1] == "comma"):
+              curToken = nextToken(curToken[0], tokens)
               limit+=1
             x+=1
-            
-    if (curToken[1][0][1] == "parenClose"):
-      curToken = nextToken(curToken[0], tokens)
-      return curToken
+        curToken = exprLeft(curToken, tokens)
+        if (curToken[1][0][1] == "parenClose"):
+          curToken = nextToken(curToken[0], tokens)
+          curToken = exprLeft(curToken, tokens)
+        else:
+          print("Erro! Esperado -)-", "\nLinha: ", curToken[1][1])
+          quit()
+        return curToken
+    
+  return curToken
 
+#EXPR
+def exprCase(curToken, tokens):# A -> βA’
+  printScope(4)
   #Terminais
-  elif (curToken[1][0][0] == "false"):#false
+  if (curToken[1][0][0] == "false"):#false
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     return curToken
   elif (curToken[1][0][0] == "true"):#true
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     return curToken
   elif (curToken[1][0][1] == "INT"):#integer
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     return curToken
   elif (curToken[1][0][1] == "string"):#string
-    print("ASD")
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     return curToken
-
-  #Terminais com mais de 1 expressão
   elif (curToken[1][0][0] == "new"):#new TYPE
     curToken = nextToken(curToken[0], tokens)
     if (curToken[1][0][1] == "TYPE"):
       curToken = nextToken(curToken[0], tokens)
-      return curToken
+      curToken = exprLeft(curToken, tokens)
     else:
       print("Erro! Esperado -TYPE- após -new-", "\nLinha: ", curToken[1][1])
       quit()
+    return curToken
 
-  #Não-terminais curtos  
+  #ID
+  elif (curToken[1][0][1] == "OBJ"):
+    curToken = nextToken(curToken[0], tokens)
+    if (curToken[1][0][1] == "atrib"):#ID <- expr
+      curToken = nextToken(curToken[0], tokens)
+      curToken = exprLeft(curToken, tokens)
+      curToken = exprCase(curToken, tokens)
+    elif (curToken[1][0][1] == "parenOpen"):#ID([expr[[,expr]]∗])
+      curToken = nextToken(curToken[0], tokens)
+      if (curToken[1][0][1] == "parenClose"):
+        curToken = nextToken(curToken[0], tokens)
+        return curToken
+      else:
+        limit = 1
+        x = 0
+        while x < limit:
+          curToken = exprLeft(curToken, tokens)
+          curToken = exprCase(curToken, tokens)
+          if (curToken[1][0][1] == "comma"):
+            curToken = nextToken(curToken[0], tokens)
+            limit+=1
+          x+=1
+      curToken = exprLeft(curToken, tokens)
+      if (curToken[1][0][1] == "parenClose"):
+        curToken = nextToken(curToken[0], tokens)
+        return curToken
+      else:
+        print("Erro! Esperado -)-", "\nLinha: ", curToken[1][1])
+        quit()
+    else:#ID terminal
+      curToken = exprLeft(curToken, tokens)
+    return curToken
+
+  #Não terminais
+  elif (curToken[1][0][1] == "isvoid"):#isvoid expr
+    curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
+    curToken = exprCase(curToken, tokens)
+
   elif (curToken[1][0][0] == "not"):#not expr
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     curToken = exprCase(curToken, tokens)
-  elif (curToken[1][0][0] == "isvoid"):#isvoid expr
+
+  elif (curToken[1][0][1] == "til"):#˜expr
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     curToken = exprCase(curToken, tokens)
-  elif (curToken[1][0][1] == "til"):#~expr
-    curToken = nextToken(curToken[0], tokens)
-    curToken = exprCase(curToken, tokens)
+
   elif (curToken[1][0][1] == "parenOpen"):#(expr)
     curToken = nextToken(curToken[0], tokens)
     curToken = exprCase(curToken, tokens)
     if (curToken[1][0][1] == "parenClose"):
       curToken = nextToken(curToken[0], tokens)
-    else:
-      print("Erro! Esperado -)-", "\nLinha: ", curToken[1][1])
-      quit()
-      
-  elif (curToken[1][0][1] == "curBrackOpen"):#{ [[expr; ]]+}
-    curToken = nextToken(curToken[0], tokens)
-    limit = 1
-    x = 0
-    while x < limit:
-      curToken = exprCase(curToken, tokens)
-      if (curToken[1][0][1] == "semiColon"):
-        if (tokens[curToken[0]+1][0][1] != "curBrackClose"):
-          curToken = nextToken(curToken[0], tokens)
-          limit+=1
-        else:
-          break
-      x+=1
-
-    if (curToken[1][0][1] == "semiColon"):
-      curToken = nextToken(curToken[0], tokens)
-    else:
-      print("Erro! Esperado -;-", "\nLinha: ", curToken[1][1])
-      quit()
-      
-    if (curToken[1][0][1] == "curBrackClose"):
-      curToken = nextToken(curToken[0], tokens)
-    else:
-      print("Erro! Esperado -}-", "\nLinha: ", curToken[1][1])
-      quit()
-      
-  elif (curToken[1][0][1] == "OBJ"): #INICIO COM ID
-    curToken = nextToken(curToken[0], tokens)
-    if (curToken[1][0][1] == "parenOpen"): #ID LEVANDO EM ([expr[[,expr]]∗])
-      curToken = nextToken(curToken[0], tokens)
-      if (curToken[1][0][1] == "parenClose"):
-        curToken = nextToken(curToken[0], tokens)
-      else:
-        curToken = nextToken(curToken[0], tokens)
-        curToken = exprCase(curToken, tokens)
-        if (curToken[1][0][1] == "comma"):
-          limit = 1
-          x = 0
-          while x < limit:
-            curToken = nextToken(curToken[0], tokens)
-            curToken = exprCase(curToken, tokens)
-            if (curToken[1][0][1] == "comma"):
-              if (tokens[curToken[0]+1][0][1] != "parenClose"):
-                limit+=1
-              else:
-                break
-            x+=1
-              
-        if (curToken[1][0][1] == "parenClose"):
-          curToken = nextToken(curToken[0], tokens)
-        else:
-          print("Erro! Esperado -)-", "\nLinha: ", curToken[1][1])
-          quit()
-            
-    elif (curToken[1][0][1] == "atrib"): #ID <- expr
-      curToken = nextToken(curToken[0], tokens)
-      curToken = exprCase(curToken, tokens)
       return curToken
-    
-    #ID terminal
-    return curToken
+    else:
+      print("Erro! Necessário fechar parênteses", "\nLinha: ", curToken[1][1])
+      quit()
 
-  #Não-terminais longos
-  elif (curToken[1][0][0] == "if"): #if then else fi
+  elif (curToken[1][0][0] == "if"):#if then else fi
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     curToken = exprCase(curToken, tokens)
     if (curToken[1][0][0] == "then"):
       curToken = nextToken(curToken[0], tokens)
+      curToken = exprLeft(curToken, tokens)
       curToken = exprCase(curToken, tokens)
     else:
       print("Erro! Esperado -then-", "\nLinha: ", curToken[1][1])
       quit()
     if (curToken[1][0][0] == "else"):
       curToken = nextToken(curToken[0], tokens)
+      curToken = exprLeft(curToken, tokens)
       curToken = exprCase(curToken, tokens)
     else:
       print("Erro! Esperado -else-", "\nLinha: ", curToken[1][1])
       quit()
     if (curToken[1][0][0] == "fi"):
       curToken = nextToken(curToken[0], tokens)
-      return curToken
     else:
       print("Erro! Esperado -fi-", "\nLinha: ", curToken[1][1])
       quit()
 
-  elif (curToken[1][0][0] == "while"): #while loop pool
+  elif (curToken[1][0][0] == "while"):#while loop pool
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     curToken = exprCase(curToken, tokens)
     if (curToken[1][0][0] == "loop"):
       curToken = nextToken(curToken[0], tokens)
+      curToken = exprLeft(curToken, tokens)
       curToken = exprCase(curToken, tokens)
     else:
       print("Erro! Esperado -loop-", "\nLinha: ", curToken[1][1])
       quit()
     if (curToken[1][0][0] == "pool"):
       curToken = nextToken(curToken[0], tokens)
-      return curToken
     else:
       print("Erro! Esperado -pool-", "\nLinha: ", curToken[1][1])
       quit()
 
-  #Começando em expr
-  elif (curToken[1][0][1] == "OP"):
+  if (curToken[1][0][1] == "curBrackOpen"):#{ [[expr; ]]+}
     curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
     curToken = exprCase(curToken, tokens)
-
-  #Não terminais muito longos
-  elif (curToken[1][0][0] == "case"): #case of esac
-    curToken = nextToken(curToken[0], tokens)
-    curToken = exprCase(curToken, tokens)
-    if (curToken[1][0][0] == "of"):
-      curToken = nextToken(curToken[0], tokens)
-    else:
-      print("Erro! Esperado -of-", "\nLinha: ", curToken[1][1])
-      quit()
-      
-    if (curToken[1][0][1] == "OBJ"):
+    if (curToken[1][0][1] == "semiColon"):
       limit = 1
       x = 0
       while x < limit:
-        curToken = nextToken(curToken[0], tokens)
-        if (curToken[1][0][1] == "colon"):
+        curToken = exprLeft(curToken, tokens)
+        curToken = exprCase(curToken, tokens)
+        if (curToken[1][0][1] == "semiColon"):
           curToken = nextToken(curToken[0], tokens)
-        else:
-          print("Erro! Esperado -:-", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "TYPE"):
-          curToken = nextToken(curToken[0], tokens)
-        else:
-          print("Erro! Esperado -TYPE-", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "arrow"):
-          curToken = nextToken(curToken[0], tokens)
-          curToken = exprCase(curToken, tokens)
-        else:
-          print("Erro! Esperado -=>-", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "semicolon"):
-          curToken = nextToken(curToken[0], tokens)
-        else:
-          print("Erro! Esperado -;-", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "OBJ"):
           limit+=1
         x+=1
-        
-    if (curToken[1][0][0] == "esac"):
-      curToken = nextToken(curToken[0], tokens)
-      return curToken
     else:
-      print("Erro! Esperado -esac-", "\nLinha: ", curToken[1][1])
+      print("Erro! Esperado -;-", "\nLinha: ", curToken[1][1])
+      quit()
+    if (curToken[1][0][1] == "curBrackClose"):
+      curToken = nextToken(curToken[0], tokens)
+    else:
+      print("Erro! Esperado -}-", "\nLinha: ", curToken[1][1])
       quit()
 
-  elif (curToken[1][0][0] == "let"): #let ID
+  if (curToken[1][0][0] == "let"):#let ID : TYPE in expr
     curToken = nextToken(curToken[0], tokens)
     if (curToken[1][0][1] == "OBJ"):
       curToken = nextToken(curToken[0], tokens)
@@ -402,58 +375,97 @@ def exprCase(curToken, tokens):
       print("Erro! Esperado -:- após -ID-", "\nLinha: ", curToken[1][1])
       quit()
     if (curToken[1][0][1] == "TYPE"):
-      curToken = nextToken(curToken[0], tokens)  
+      curToken = nextToken(curToken[0], tokens)
     else:
-      print("Erro! Esperado -TYPE-", "\nLinha: ", curToken[1][1])
+      print("Erro! Esperado -TYPE- após -:-", "\nLinha: ", curToken[1][1])
       quit()
+
     if (curToken[1][0][1] == "atrib"):
       curToken = nextToken(curToken[0], tokens)
+      curToken = exprLeft(curToken, tokens)
       curToken = exprCase(curToken, tokens)
-    else:
-      print("Erro! Esperado - <- -", "\nLinha: ", curToken[1][1])
-      quit()
-      
+
     if (curToken[1][0][1] == "comma"):
-      limit = 1
-      x = 0
-      while x < limit:
+      curToken = nextToken(curToken[0], tokens)
+      if (curToken[1][0][1] == "OBJ"):
         curToken = nextToken(curToken[0], tokens)
-        if (curToken[1][0][1] == "OBJ"):
-          curToken = nextToken(curToken[0], tokens)
-        else:
-          print("Erro! Esperado -ID- após -let-", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "colon"):
-          curToken = nextToken(curToken[0], tokens)
-        else:
-          print("Erro! Esperado -:- após -ID-", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "TYPE"):
-          curToken = nextToken(curToken[0], tokens)  
-        else:
-          print("Erro! Esperado -TYPE-", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "atrib"):
-          curToken = nextToken(curToken[0], tokens)
-          curToken = exprCase(curToken, tokens)
-        else:
-          print("Erro! Esperado - <- -", "\nLinha: ", curToken[1][1])
-          quit()
-        if (curToken[1][0][1] == "comma"):
-          curToken = exprCase(curToken, tokens)
-          limit+=1
-        x+=1
-        
+      else:
+        print("Erro! Esperado -ID-", "\nLinha: ", curToken[1][1])
+        quit()
+      if (curToken[1][0][1] == "colon"):
+        curToken = nextToken(curToken[0], tokens)
+      else:
+        print("Erro! Esperado -:- após -ID-", "\nLinha: ", curToken[1][1])
+        quit()
+      if (curToken[1][0][1] == "TYPE"):
+        curToken = nextToken(curToken[0], tokens)
+      else:
+        print("Erro! Esperado -TYPE- após -:-", "\nLinha: ", curToken[1][1])
+        quit()
+      if (curToken[1][0][1] == "atrib"):
+        curToken = nextToken(curToken[0], tokens)
+        curToken = exprLeft(curToken, tokens)
+        curToken = exprCase(curToken, tokens)
+
     if (curToken[1][0][0] == "in"):
       curToken = nextToken(curToken[0], tokens)
+      curToken = exprLeft(curToken, tokens)
       curToken = exprCase(curToken, tokens)
-      return curToken
     else:
       print("Erro! Esperado -in-", "\nLinha: ", curToken[1][1])
       quit()
-    
+
+  if (curToken[1][0][0] == "case"):# case of esac
+    curToken = nextToken(curToken[0], tokens)
+    curToken = exprLeft(curToken, tokens)
+    curToken = exprCase(curToken, tokens)
+    if (curToken[1][0][0] == "of"):
+      curToken = nextToken(curToken[0], tokens)
+      limit = 1
+      x = 0
+      while x < limit:
+        if (tokens[curToken[0]][0][0] != "esac"):
+          if (curToken[1][0][1] == "OBJ"):#[[ID : TYPE => expr;]]+
+            curToken = nextToken(curToken[0], tokens)
+            if (curToken[1][0][1] == "colon"):
+              curToken = nextToken(curToken[0], tokens)
+            else:
+              print("Erro! Esperado -:- após -ID-", "\nLinha: ", curToken[1][1])
+              quit()
+            if (curToken[1][0][1] == "TYPE"):
+              curToken = nextToken(curToken[0], tokens)
+            else:
+              print("Erro! Esperado -TYPE- após -:-", "\nLinha: ", curToken[1][1])
+              quit()
+            if (curToken[1][0][0] == "=>"):
+              curToken = nextToken(curToken[0], tokens)
+              curToken = exprLeft(curToken, tokens)
+              curToken = exprCase(curToken, tokens)
+            else:
+              print("Erro! Esperado - => - após -TYPE-", "\nLinha: ", curToken[1][1])
+              quit()
+          else:
+            print("Erro! Esperado -ID- após -of-", "\nLinha: ", curToken[1][1])
+            quit()
+          if (curToken[1][0][1] == "semiColon"):
+            curToken = nextToken(curToken[0], tokens)
+            limit+=1
+          else:
+            print("Erro! Esperado -;- após -ID-", "\nLinha: ", curToken[1][1])
+            quit()
+        x+=1
+    else:
+      print("Erro! Esperado -of-", "\nLinha: ", curToken[1][1])
+      quit()
+    if (curToken[1][0][0] == "esac"):
+      curToken = nextToken(curToken[0], tokens)
+    else:
+      print("Erro! Esperado -esac-", "\nLinha: ", curToken[1][1])
+      quit()
+  
   return curToken
 
+#FORMAL
 def formalCase(curToken, tokens):
   printScope(3)
   if (curToken == 0):
@@ -482,6 +494,7 @@ def formalCase(curToken, tokens):
         
   return curToken
 
+#FEATURE
 def featureCase(curToken, tokens):
   printScope(2)
   if (curToken == 0):
@@ -494,13 +507,13 @@ def featureCase(curToken, tokens):
       if (curToken[1][0][1] != "parenClose"):
         curToken = formalCase(curToken, tokens)
 
-      if (curToken[1][0][1] == "comma"):
+      elif (curToken[1][0][1] == "comma"):
         limit = 1
         x = 0
         while x < limit:
-          curToken = nextToken(curToken[0], tokens)
           curToken = formalCase(curToken, tokens)
           if (curToken[1][0][1] == "comma"):
+            curToken = nextToken(curToken[0], tokens)
             limit+=1
           x+=1
 
@@ -548,6 +561,7 @@ def featureCase(curToken, tokens):
         
       if (curToken[1][0][1] == "atrib"):
         curToken = nextToken(curToken[0], tokens)
+        curToken = exprLeft(curToken, tokens)
         curToken = exprCase(curToken, tokens)
 
     else:
@@ -557,9 +571,11 @@ def featureCase(curToken, tokens):
   else:
     print("Erro! Feature deve iniciar com objeto ID", "\nLinha: ", curToken[1][1])
     quit()
-      
+
+  curToken = exprLeft(curToken, tokens)
   return curToken
 
+#CLASS
 def classCase(curToken, tokens):
   printScope(1)
   if (curToken == 0):
@@ -596,7 +612,6 @@ def classCase(curToken, tokens):
           else:
             break
         x+=1
-        
       if(curToken[1][0][1] == "semiColon"):
         curToken = nextToken(curToken[0], tokens)
       else:
@@ -609,6 +624,7 @@ def classCase(curToken, tokens):
     
   return curToken
 
+#PROGRAM
 def sintAnalize(curToken, tokens):
   if (curToken == 0):
     print("Validado.")
