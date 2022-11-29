@@ -318,7 +318,7 @@ def exprLeft(curToken, tokens, pai, upperScope, classePai):# A’ → αA / ∈
     operator.pai = exprAtual
     exprAtual.filhos.append(operator)
     curToken = nextToken(curToken[0], tokens)
-    curToken = exprCase(curToken, tokens, exprAtual)
+    curToken = exprCase(curToken, tokens, exprAtual, escopoAtual, classePai)
     pai.filhos.append(exprAtual)
     return curToken
 
